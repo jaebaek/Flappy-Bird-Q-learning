@@ -40,18 +40,31 @@ class FlappyBird : ApplicationAdapter() {
     private lateinit var birds: Array<Texture>
     private lateinit var topTubeRectangles: Array<Rectangle?>
     private lateinit var bottomTubeRectangles: Array<Rectangle?>
-    private lateinit var birdCircle: Circle
     private lateinit var font: BitmapFont
     private lateinit var topTube: Texture
     private lateinit var bottomTube: Texture
     private lateinit var random: Random
 
     private var flapState = 0
+    private var timeFromLastFlap = 0.0f
     private var birdY: Float = 0f
+    private val birdX: Float by lazy { gdxWidth / 4f - currentBird.width / 2f }
+    private val currentBird by lazy { birds[flapState] }
+
+    /**
+     * Box surrounding the bird. It is used to detect collision.
+     */
+    private val birdBox: Rectangle
+        get() = Rectangle(
+            birdX, birdY,
+            currentBird.width.toFloat(),
+            currentBird.height.toFloat(),
+        )
+
     private var velocity: Float = 0f
     private var score: Int = 0
     private var scoringTube: Int = 0
-    private var gameState: GameStates = GameStates.START
+    private var gameState: GameStates = GameStates.PLAYING
     private val numberOfTubes: Int = 4
     private var gdxHeight: Int = 0
     private var gdxWidth: Int = 0
@@ -66,13 +79,14 @@ class FlappyBird : ApplicationAdapter() {
     /** Y coordinates of the open space of the tubes */
     private val tubeOpenSpaceY = FloatArray(numberOfTubes)
 
+    private val gap by lazy { currentBird.height * 3.0f }
+
     private var distanceBetweenTubes: Float = 0.toFloat()
 
     override fun create() {
         batch = SpriteBatch()
         background = Texture("bg.png")
         gameOver = Texture("gameover.png")
-        birdCircle = Circle()
         font = BitmapFont()
         font.color = Color.WHITE
         font.data.setScale(10f)
@@ -97,46 +111,51 @@ class FlappyBird : ApplicationAdapter() {
         startGame()
     }
 
+    private fun updateScore() {
+        if (tubeX[scoringTube] < birdX) {
+            score++
+            if (scoringTube < numberOfTubes - 1) {
+                scoringTube++
+            } else {
+                scoringTube = 0
+            }
+        }
+    }
+
+    private fun jump() { velocity = -0.2f * currentBird.height }
+
     override fun render() {
         batch.begin()
         batch.draw(background, 0f, 0f, gdxWidth.toFloat(), gdxHeight.toFloat())
 
         if (gameState == GameStates.PLAYING) {
-
-            if (tubeX[scoringTube] < gdxWidth / 2) {
-                score++
-                if (scoringTube < numberOfTubes - 1) {
-                    scoringTube++
-                } else {
-                    scoringTube = 0
-                }
-            }
+            updateScore()
 
             if (Gdx.input.justTouched()) {
-                velocity = -30f
+                jump()
             }
 
             for (i in 0 until numberOfTubes) {
 
                 if (tubeX[i] < -topTubeWidth) {
                     tubeX[i] += numberOfTubes * distanceBetweenTubes
-                    tubeOpenSpaceY[i] = (random.nextFloat() - 0.5f) * (gdxHeight.toFloat() - GAP - 200f)
+                    tubeOpenSpaceY[i] = (random.nextFloat() - 0.5f) * (gdxHeight.toFloat() - gap - 200f)
                 } else {
                     tubeX[i] = tubeX[i] - TUBE_VELOCITY
                 }
 
-                batch.draw(topTube, tubeX[i], gdxHeight / 2f + GAP / 2 + tubeOpenSpaceY[i])
+                batch.draw(topTube, tubeX[i], gdxHeight / 2f + gap / 2 + tubeOpenSpaceY[i])
                 batch.draw(bottomTube,
                     tubeX[i],
-                    gdxHeight / 2f - GAP / 2 - bottomTubeHeight.toFloat() + tubeOpenSpaceY[i])
+                    gdxHeight / 2f - gap / 2 - bottomTubeHeight.toFloat() + tubeOpenSpaceY[i])
 
                 topTubeRectangles[i] = Rectangle(tubeX[i],
-                    gdxHeight / 2f + GAP / 2 + tubeOpenSpaceY[i],
+                    gdxHeight / 2f + gap / 2 + tubeOpenSpaceY[i],
                     topTubeWidth.toFloat(),
                     topTubeHeight.toFloat())
 
                 bottomTubeRectangles[i] = Rectangle(tubeX[i],
-                    gdxHeight / 2f - GAP / 2 - bottomTubeHeight.toFloat() + tubeOpenSpaceY[i],
+                    gdxHeight / 2f - gap / 2 - bottomTubeHeight.toFloat() + tubeOpenSpaceY[i],
                     bottomTubeWidth.toFloat(),
                     bottomTubeHeight.toFloat())
             }
@@ -147,55 +166,63 @@ class FlappyBird : ApplicationAdapter() {
             } else {
                 gameState = GameStates.GAME_OVER
             }
-
-        } else if (gameState == GameStates.START) {
-            if (Gdx.input.justTouched()) {
-                gameState = GameStates.PLAYING
-            }
         } else if (gameState == GameStates.GAME_OVER) {
-            batch.draw(gameOver,
-                gdxWidth / 2f - gameOver.width / 2f,
-                gdxHeight / 2f - gameOver.height / 2f)
-
-            if (Gdx.input.justTouched()) {
-                gameState = GameStates.PLAYING
-                startGame()
-                score = 0
-                scoringTube = 0
-                velocity = 0f
-            }
+            reset()
         }
 
-        flapState = if (flapState == 0) 1 else 0
+        updateFlapState()
 
-        batch.draw(birds[flapState], gdxWidth / 2f - birds[flapState].width / 2f, birdY)
+        batch.draw(currentBird, birdX, birdY)
         font.draw(batch, score.toString(), 100f, 200f)
-        birdCircle.set(gdxWidth / 2f,
-            birdY + birds[flapState].height / 2f,
-            birds[flapState].width / 2f)
 
-        for (i in 0 until numberOfTubes) {
-            if (Intersector.overlaps(birdCircle, topTubeRectangles[i])
-                || Intersector.overlaps(birdCircle, bottomTubeRectangles[i])) gameState = GameStates.GAME_OVER
-        }
+        checkCrash()
 
         batch.end()
+    }
+
+    private fun updateFlapState() {
+        timeFromLastFlap += Gdx.graphics.deltaTime
+        if (timeFromLastFlap >= 0.2f) {
+            flapState = if (flapState == 0) 1 else 0
+            timeFromLastFlap = 0.0f
+        }
+    }
+
+    private fun reset() {
+        score = 0
+        scoringTube = 0
+        velocity = 0f
+        startGame()
+    }
+
+    private fun checkCrash() {
+        for (i in 0 until numberOfTubes) {
+            if (Intersector.overlaps(birdBox, topTubeRectangles[i])
+                || Intersector.overlaps(birdBox, bottomTubeRectangles[i])
+            ) {
+                gameState = GameStates.GAME_OVER
+                return
+            }
+        }
     }
 
     private fun startGame() {
         birdY = gdxHeight / 2f - birds[0].height / 2f
 
         for (i in 0 until numberOfTubes) {
-            tubeOpenSpaceY[i] = (random.nextFloat() - 0.5f) * (gdxHeight.toFloat() - GAP - 200f)
-            tubeX[i] = gdxWidth / 2f - topTubeWidth / 2f + gdxWidth.toFloat() + i * distanceBetweenTubes
+            tubeOpenSpaceY[i] = (random.nextFloat() - 0.5f) * (gdxHeight.toFloat() - gap - 200f)
+            tubeX[i] = gdxWidth / 2f - topTubeWidth / 2f +
+                TUBE_START_POS_FACTOR * gdxWidth.toFloat() + i * distanceBetweenTubes
             topTubeRectangles[i] = Rectangle()
             bottomTubeRectangles[i] = Rectangle()
         }
+        gameState = GameStates.PLAYING
     }
 
     companion object {
         private const val GRAVITY = 2f
         private const val TUBE_VELOCITY = 4f
-        private const val GAP = 200f
+        private const val TUBE_START_POS_FACTOR = 0.5f
+        const val FPS = 30
     }
 }
