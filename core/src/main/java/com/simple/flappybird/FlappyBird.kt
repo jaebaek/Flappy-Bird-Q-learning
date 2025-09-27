@@ -44,6 +44,8 @@ class FlappyBird : ApplicationAdapter() {
     private lateinit var bottomTube: Texture
     private lateinit var random: Random
 
+    private var speedUpFactor = 1
+
     private var flapState = 0
     private var timeFromLastFlap = 0.0f
     private var birdY: Float = 0f
@@ -111,6 +113,12 @@ class FlappyBird : ApplicationAdapter() {
     }
 
     override fun render() {
+        for (i in 0 until speedUpFactor) {
+            run()
+        }
+    }
+
+    private fun run() {
         batch.begin()
         batch.draw(background, 0f, 0f, gdxWidth.toFloat(), gdxHeight.toFloat())
 
