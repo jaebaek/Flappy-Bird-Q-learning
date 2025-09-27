@@ -53,7 +53,7 @@ class FlappyBird : ApplicationAdapter() {
     private val birdX: Float by lazy { gdxWidth / 4f - currentBird.width / 2f }
     private val currentBird by lazy { birds[flapState] }
 
-    val agent = DQNAgent(stateSize = 8, actionSize = 2)
+    val agent = DQNAgent(stateSize = 7, actionSize = 2)
     var remainingEpisodes = 1000
     var reward = 0.1
 
@@ -139,7 +139,10 @@ class FlappyBird : ApplicationAdapter() {
             agent.replay()
 
             if (gameState == GameStates.GAME_OVER) {
-                println("Episode: $remainingEpisodes, Score: $score, Epsilon: ${agent.epsilon}")
+                println("Episode: $remainingEpisodes, ${agent.toString()}, Epsilon: ${agent.epsilon}")
+                if (agent.epsilon > 0.01f) {
+                    agent.epsilon -= 0.004f
+                }
                 reset()
                 remainingEpisodes--
             }
@@ -167,7 +170,16 @@ class FlappyBird : ApplicationAdapter() {
         val topTubeY2 = getTopTubeY(i2)
         val bottomTubeY1 = getBottomTubeY(i1) + bottomTubeHeight.toFloat()
         val bottomTubeY2 = getBottomTubeY(i2) + bottomTubeHeight.toFloat()
-        val state = listOf(birdX, birdY, tubeX[i1], topTubeY1, bottomTubeY1, tubeX[i2], topTubeY2, bottomTubeY2)
+
+        val normalizedBirdY = birdY / gdxHeight.toFloat()
+        val normalizedTubeX1 = tubeX[i1] / (2.0f * gdxWidth.toFloat())
+        val normalizedTubeX2 = tubeX[i2] / (2.0f * gdxWidth.toFloat())
+        val normalizedTopTubeY1 = topTubeY1 / gdxHeight.toFloat()
+        val normalizedTopTubeY2 = topTubeY2 / gdxHeight.toFloat()
+        val normalizedBottomTubeY1 = bottomTubeY1 / gdxHeight.toFloat()
+        val normalizedBottomTubeY2 = bottomTubeY2 / gdxHeight.toFloat()
+        // val state = listOf(birdY / gdxHeight.toFloat(), tubeX[i1] / (2.0f * gdxWidth.toFloat()), topTubeY1, bottomTubeY1, tubeX[i2], topTubeY2, bottomTubeY2)
+        val state = listOf(normalizedBirdY, normalizedTubeX1, normalizedTopTubeY1, normalizedBottomTubeY1, normalizedTubeX2, normalizedTopTubeY2, normalizedBottomTubeY2)
         return state.map { it.toDouble() }.toDoubleArray()
     }
 
@@ -176,7 +188,7 @@ class FlappyBird : ApplicationAdapter() {
         batch.draw(background, 0f, 0f, gdxWidth.toFloat(), gdxHeight.toFloat())
 
         assert(gameState == GameStates.PLAYING)
-        reward = 0.1
+        reward = 2.0
 
         updateScore()
         if (jumpRequested) {
@@ -198,7 +210,7 @@ class FlappyBird : ApplicationAdapter() {
     private fun updateScore() {
         if (tubeX[scoringTube] < birdX) {
             score++
-            reward = 1.0
+            reward = 10.0
             if (scoringTube < numberOfTubes - 1) {
                 scoringTube++
             } else {
@@ -214,7 +226,7 @@ class FlappyBird : ApplicationAdapter() {
             velocity += GRAVITY
             birdY -= velocity
         } else {
-            reward = -10.0
+            reward = -100.0
             gameState = GameStates.GAME_OVER
         }
     }
@@ -267,7 +279,7 @@ class FlappyBird : ApplicationAdapter() {
             if (Intersector.overlaps(birdBox, topTubeRectangles[i])
                 || Intersector.overlaps(birdBox, bottomTubeRectangles[i])
             ) {
-                reward = -10.0
+                reward = -100.0
                 gameState = GameStates.GAME_OVER
                 return
             }

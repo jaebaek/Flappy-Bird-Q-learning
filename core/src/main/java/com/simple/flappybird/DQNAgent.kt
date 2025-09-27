@@ -23,23 +23,14 @@ class DQNAgent(
     private val batchSize: Int = 64,
     private val gamma: Double = 0.95,       // Discount factor for future rewards
     private val learningRate: Double = 0.001,
-    private val updateTargetEvery: Int = 10 // Steps before updating target network
 ) {
     // Epsilon-greedy strategy parameters
     var epsilon: Double = 1.0               // Exploration rate
-    private val epsilonMin: Double = 0.01
-    private val epsilonDecay: Double = 0.0025
 
-    private val mainNetwork = MLP(stateSize, 3, actionSize, learningRate)
-    private val targetNetwork = MLP(stateSize, 3, actionSize, learningRate)
+    private val trainer = Trainer.create(inputCount = stateSize, hiddenCount = 3, outputCount = actionSize)
 
     private val replayBuffer = mutableListOf<Experience>()
     private var timeStep = 0
-
-    init {
-        // Initialize target network with the same weights as the main network
-        updateTargetNetwork()
-    }
 
     /**
      * Stores an experience in the replay buffer.
@@ -59,7 +50,7 @@ class DQNAgent(
             return Random.nextInt(actionSize) // Explore: choose a random action
         }
         // Exploit: choose the best action based on the main network's prediction
-        val qValues = mainNetwork.predict(state)
+        val qValues = trainer.network.predict(state)
         return qValues.indices.maxByOrNull { qValues[it] } ?: 0
     }
 
@@ -78,7 +69,7 @@ class DQNAgent(
             val (state, action, reward, nextState, done) = experience
 
             // Get the predicted Q-values for the next state from the STABLE target network
-            val nextQValues = targetNetwork.predict(nextState)
+            val nextQValues = trainer.network.predict(nextState)
             val maxNextQ = nextQValues.maxOrNull() ?: 0.0
 
             // Calculate the target Q-value for the current state and action
@@ -86,36 +77,21 @@ class DQNAgent(
             val targetQ = if (done) reward else reward + gamma * maxNextQ
 
             // Get the current Q-value predictions from the main network
-            val currentQValues = mainNetwork.predict(state)
+            val currentQValues = trainer.network.predict(state)
             // Create the target vector: it's the same as the current prediction,
             // but updated with the new Q-value for the action that was taken.
             val targetQValues = currentQValues.copyOf()
             targetQValues[action] = targetQ
 
             // Train the main network on this single experience
-            mainNetwork.train(state, targetQValues)
-        }
-
-        // Decay epsilon to reduce exploration over time
-        if (epsilon > epsilonMin) {
-            epsilon -= epsilonDecay
+            trainer.train(state, targetQValues, learningRate)
         }
 
         // Periodically update the target network to match the main network
         timeStep++
-        if (timeStep % updateTargetEvery == 0) {
-            updateTargetNetwork()
-        }
     }
 
-    /**
-     * Copies weights from the main network to the target network.
-     */
-    private fun updateTargetNetwork() {
-        targetNetwork.weightsInputHidden = mainNetwork.weightsInputHidden.map { it.copyOf() }.toTypedArray()
-        targetNetwork.biasHidden = mainNetwork.biasHidden.copyOf()
-        targetNetwork.weightsHiddenOutput = mainNetwork.weightsHiddenOutput.map { it.copyOf() }.toTypedArray()
-        targetNetwork.biasOutput = mainNetwork.biasOutput.copyOf()
-        println("Target network updated: $epsilon / $timeStep")
+    override fun toString(): String {
+        return trainer.toString()
     }
 }
