@@ -30,6 +30,7 @@ import com.badlogic.gdx.graphics.g2d.SpriteBatch
 import com.badlogic.gdx.math.Intersector
 import com.badlogic.gdx.math.Rectangle
 import java.util.*
+import kotlin.collections.toDoubleArray
 
 class FlappyBird : ApplicationAdapter() {
 
@@ -51,6 +52,10 @@ class FlappyBird : ApplicationAdapter() {
     private var birdY: Float = 0f
     private val birdX: Float by lazy { gdxWidth / 4f - currentBird.width / 2f }
     private val currentBird by lazy { birds[flapState] }
+
+    val agent = DQNAgent(stateSize = 8, actionSize = 2)
+    var remainingEpisodes = 1000
+    var reward = 0.1
 
     /**
      * Box surrounding the bird. It is used to detect collision.
@@ -79,6 +84,9 @@ class FlappyBird : ApplicationAdapter() {
 
     /** Y coordinates of the open space of the tubes */
     private val tubeOpenSpaceY = FloatArray(numberOfTubes)
+
+    private fun getTopTubeY(i: Int) = gdxHeight / 2f + gap / 2 + tubeOpenSpaceY[i]
+    private fun getBottomTubeY(i: Int) = gdxHeight / 2f - gap / 2 - bottomTubeHeight.toFloat() + tubeOpenSpaceY[i]
 
     private val gap by lazy { currentBird.height * 3.0f }
 
@@ -113,25 +121,69 @@ class FlappyBird : ApplicationAdapter() {
     }
 
     override fun render() {
+        if (remainingEpisodes == 0) {
+            val action = agent.chooseAction(getState())
+            simulate(action == JUMP_ACTION)
+            return
+        }
+
+        updateSpeedUpFactor()
+
         for (i in 0 until speedUpFactor) {
-            run()
+            val currentState = getState()
+
+            val action = agent.chooseAction(currentState)
+            simulate(action == JUMP_ACTION)
+
+            agent.remember(currentState, action, reward, getState(), gameState == GameStates.GAME_OVER)
+            agent.replay()
+
+            if (gameState == GameStates.GAME_OVER) {
+                println("Episode: $remainingEpisodes, Score: $score, Epsilon: ${agent.epsilon}")
+                reset()
+                remainingEpisodes--
+            }
+            if (remainingEpisodes == 0) return
         }
     }
 
-    private fun run() {
+    private fun updateSpeedUpFactor() {
+        if (Gdx.input.justTouched()) {
+            if (speedUpFactor >= 8) {
+                speedUpFactor = 1
+            } else {
+                speedUpFactor *= 2
+            }
+        }
+    }
+
+    private fun getState(): DoubleArray {
+        val relevantIndices = tubeX.indices
+            .filter { tubeX[it] + topTubeWidth > birdX }
+            .sortedBy { tubeX[it] }
+        val i1 = relevantIndices[0]
+        val i2 = relevantIndices[1]
+        val topTubeY1 = getTopTubeY(i1)
+        val topTubeY2 = getTopTubeY(i2)
+        val bottomTubeY1 = getBottomTubeY(i1) + bottomTubeHeight.toFloat()
+        val bottomTubeY2 = getBottomTubeY(i2) + bottomTubeHeight.toFloat()
+        val state = listOf(birdX, birdY, tubeX[i1], topTubeY1, bottomTubeY1, tubeX[i2], topTubeY2, bottomTubeY2)
+        return state.map { it.toDouble() }.toDoubleArray()
+    }
+
+    private fun simulate(jumpRequested: Boolean) {
         batch.begin()
         batch.draw(background, 0f, 0f, gdxWidth.toFloat(), gdxHeight.toFloat())
 
-        if (gameState == GameStates.PLAYING) {
-            updateScore()
-            if (Gdx.input.justTouched()) {
-                jump()
-            }
-            drawTubes()
-            updateBirdY()
-        } else if (gameState == GameStates.GAME_OVER) {
-            reset()
+        assert(gameState == GameStates.PLAYING)
+        reward = 0.1
+
+        updateScore()
+        if (jumpRequested) {
+            jump()
         }
+        drawTubes()
+        updateBirdY()
 
         updateFlapState()
 
@@ -146,6 +198,7 @@ class FlappyBird : ApplicationAdapter() {
     private fun updateScore() {
         if (tubeX[scoringTube] < birdX) {
             score++
+            reward = 1.0
             if (scoringTube < numberOfTubes - 1) {
                 scoringTube++
             } else {
@@ -157,10 +210,11 @@ class FlappyBird : ApplicationAdapter() {
     private fun jump() { velocity = -0.2f * currentBird.height }
 
     private fun updateBirdY() {
-        if (birdY > 0) {
+        if (birdY > 0 && birdY < gdxHeight - currentBird.height) {
             velocity += GRAVITY
             birdY -= velocity
         } else {
+            reward = -10.0
             gameState = GameStates.GAME_OVER
         }
     }
@@ -169,9 +223,8 @@ class FlappyBird : ApplicationAdapter() {
         for (i in 0 until numberOfTubes) {
             updateTubePosition(i)
 
-            val topTubeY = gdxHeight / 2f + gap / 2 + tubeOpenSpaceY[i]
-            val bottomTubeY = gdxHeight / 2f - gap / 2 - bottomTubeHeight.toFloat() + tubeOpenSpaceY[i]
-
+            val topTubeY = getTopTubeY(i)
+            val bottomTubeY = getBottomTubeY(i)
             batch.draw(topTube, tubeX[i], topTubeY)
             batch.draw(
                 bottomTube, tubeX[i], bottomTubeY
@@ -214,6 +267,7 @@ class FlappyBird : ApplicationAdapter() {
             if (Intersector.overlaps(birdBox, topTubeRectangles[i])
                 || Intersector.overlaps(birdBox, bottomTubeRectangles[i])
             ) {
+                reward = -10.0
                 gameState = GameStates.GAME_OVER
                 return
             }
@@ -237,6 +291,7 @@ class FlappyBird : ApplicationAdapter() {
         private const val GRAVITY = 2f
         private const val TUBE_VELOCITY = 4f
         private const val TUBE_START_POS_FACTOR = 0.5f
+        private const val JUMP_ACTION = 1
         const val FPS = 30
     }
 }
