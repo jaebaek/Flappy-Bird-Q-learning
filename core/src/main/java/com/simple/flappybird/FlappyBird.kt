@@ -27,7 +27,6 @@ import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.graphics.Texture
 import com.badlogic.gdx.graphics.g2d.BitmapFont
 import com.badlogic.gdx.graphics.g2d.SpriteBatch
-import com.badlogic.gdx.math.Circle
 import com.badlogic.gdx.math.Intersector
 import com.badlogic.gdx.math.Rectangle
 import java.util.*
@@ -111,6 +110,31 @@ class FlappyBird : ApplicationAdapter() {
         startGame()
     }
 
+    override fun render() {
+        batch.begin()
+        batch.draw(background, 0f, 0f, gdxWidth.toFloat(), gdxHeight.toFloat())
+
+        if (gameState == GameStates.PLAYING) {
+            updateScore()
+            if (Gdx.input.justTouched()) {
+                jump()
+            }
+            drawTubes()
+            updateBirdY()
+        } else if (gameState == GameStates.GAME_OVER) {
+            reset()
+        }
+
+        updateFlapState()
+
+        batch.draw(currentBird, birdX, birdY)
+        font.draw(batch, score.toString(), 100f, 200f)
+
+        checkCrash()
+
+        batch.end()
+    }
+
     private fun updateScore() {
         if (tubeX[scoringTube] < birdX) {
             score++
@@ -124,60 +148,42 @@ class FlappyBird : ApplicationAdapter() {
 
     private fun jump() { velocity = -0.2f * currentBird.height }
 
-    override fun render() {
-        batch.begin()
-        batch.draw(background, 0f, 0f, gdxWidth.toFloat(), gdxHeight.toFloat())
-
-        if (gameState == GameStates.PLAYING) {
-            updateScore()
-
-            if (Gdx.input.justTouched()) {
-                jump()
-            }
-
-            for (i in 0 until numberOfTubes) {
-
-                if (tubeX[i] < -topTubeWidth) {
-                    tubeX[i] += numberOfTubes * distanceBetweenTubes
-                    tubeOpenSpaceY[i] = (random.nextFloat() - 0.5f) * (gdxHeight.toFloat() - gap - 200f)
-                } else {
-                    tubeX[i] = tubeX[i] - TUBE_VELOCITY
-                }
-
-                batch.draw(topTube, tubeX[i], gdxHeight / 2f + gap / 2 + tubeOpenSpaceY[i])
-                batch.draw(bottomTube,
-                    tubeX[i],
-                    gdxHeight / 2f - gap / 2 - bottomTubeHeight.toFloat() + tubeOpenSpaceY[i])
-
-                topTubeRectangles[i] = Rectangle(tubeX[i],
-                    gdxHeight / 2f + gap / 2 + tubeOpenSpaceY[i],
-                    topTubeWidth.toFloat(),
-                    topTubeHeight.toFloat())
-
-                bottomTubeRectangles[i] = Rectangle(tubeX[i],
-                    gdxHeight / 2f - gap / 2 - bottomTubeHeight.toFloat() + tubeOpenSpaceY[i],
-                    bottomTubeWidth.toFloat(),
-                    bottomTubeHeight.toFloat())
-            }
-
-            if (birdY > 0) {
-                velocity += GRAVITY
-                birdY -= velocity
-            } else {
-                gameState = GameStates.GAME_OVER
-            }
-        } else if (gameState == GameStates.GAME_OVER) {
-            reset()
+    private fun updateBirdY() {
+        if (birdY > 0) {
+            velocity += GRAVITY
+            birdY -= velocity
+        } else {
+            gameState = GameStates.GAME_OVER
         }
+    }
 
-        updateFlapState()
+    private fun drawTubes() {
+        for (i in 0 until numberOfTubes) {
+            updateTubePosition(i)
 
-        batch.draw(currentBird, birdX, birdY)
-        font.draw(batch, score.toString(), 100f, 200f)
+            val topTubeY = gdxHeight / 2f + gap / 2 + tubeOpenSpaceY[i]
+            val bottomTubeY = gdxHeight / 2f - gap / 2 - bottomTubeHeight.toFloat() + tubeOpenSpaceY[i]
 
-        checkCrash()
+            batch.draw(topTube, tubeX[i], topTubeY)
+            batch.draw(
+                bottomTube, tubeX[i], bottomTubeY
+            )
+            topTubeRectangles[i] = Rectangle(
+                tubeX[i], topTubeY, topTubeWidth.toFloat(), topTubeHeight.toFloat()
+            )
+            bottomTubeRectangles[i] = Rectangle(
+                tubeX[i], bottomTubeY, bottomTubeWidth.toFloat(), bottomTubeHeight.toFloat()
+            )
+        }
+    }
 
-        batch.end()
+    private fun updateTubePosition(i: Int) {
+        if (tubeX[i] < -topTubeWidth) {
+            tubeX[i] += numberOfTubes * distanceBetweenTubes
+            tubeOpenSpaceY[i] = (random.nextFloat() - 0.5f) * (gdxHeight.toFloat() - gap - 200f)
+        } else {
+            tubeX[i] = tubeX[i] - TUBE_VELOCITY
+        }
     }
 
     private fun updateFlapState() {
