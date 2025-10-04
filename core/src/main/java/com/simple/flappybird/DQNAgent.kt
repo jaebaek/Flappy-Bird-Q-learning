@@ -1,5 +1,7 @@
 package com.simple.flappybird
 
+import com.badlogic.gdx.utils.Disposable
+import kotlinx.coroutines.runBlocking
 import kotlin.random.Random
 
 /**
@@ -17,17 +19,16 @@ data class Experience(
  * The Deep Q-Network Agent. It uses an MLP to approximate the Q-function.
  */
 class DQNAgent(
-    stateSize: Int,
     private val actionSize: Int,
     private val replayBufferSize: Int = 10000,
     private val batchSize: Int = 64,
-    private val gamma: Double = 0.95,       // Discount factor for future rewards
+    private val gamma: Double = 0.9,       // Discount factor for future rewards
     private val learningRate: Double = 0.001,
-) {
+): Disposable {
+    private val nn = NeuralNetworkWrapper()
+
     // Epsilon-greedy strategy parameters
     var epsilon: Double = 1.0               // Exploration rate
-
-    private val trainer = Trainer.create(inputCount = stateSize, hiddenCount = 3, outputCount = actionSize)
 
     private val replayBuffer = mutableListOf<Experience>()
     private var timeStep = 0
@@ -50,8 +51,15 @@ class DQNAgent(
             return Random.nextInt(actionSize) // Explore: choose a random action
         }
         // Exploit: choose the best action based on the main network's prediction
-        val qValues = trainer.network.predict(state)
+        val qValues = predict(state)
         return qValues.indices.maxByOrNull { qValues[it] } ?: 0
+    }
+
+    private fun predict(state: DoubleArray) = try {
+        runBlocking { nn.predict(state) }
+    } catch (e: Exception) {
+        println("Error in chooseAction: ${e.message}")
+        DoubleArray(actionSize)
     }
 
     /**
@@ -69,7 +77,7 @@ class DQNAgent(
             val (state, action, reward, nextState, done) = experience
 
             // Get the predicted Q-values for the next state from the STABLE target network
-            val nextQValues = trainer.network.predict(nextState)
+            val nextQValues = predict(nextState)
             val maxNextQ = nextQValues.maxOrNull() ?: 0.0
 
             // Calculate the target Q-value for the current state and action
@@ -77,21 +85,22 @@ class DQNAgent(
             val targetQ = if (done) reward else reward + gamma * maxNextQ
 
             // Get the current Q-value predictions from the main network
-            val currentQValues = trainer.network.predict(state)
+            val currentQValues = predict(state)
+
             // Create the target vector: it's the same as the current prediction,
             // but updated with the new Q-value for the action that was taken.
             val targetQValues = currentQValues.copyOf()
             targetQValues[action] = targetQ
 
             // Train the main network on this single experience
-            trainer.train(state, targetQValues, learningRate)
+            nn.train(state, targetQValues)
         }
 
         // Periodically update the target network to match the main network
         timeStep++
     }
 
-    override fun toString(): String {
-        return trainer.toString()
+    override fun dispose() {
+        nn.dispose()
     }
 }

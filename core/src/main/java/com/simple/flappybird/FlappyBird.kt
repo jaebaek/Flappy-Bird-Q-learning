@@ -29,6 +29,9 @@ import com.badlogic.gdx.graphics.g2d.BitmapFont
 import com.badlogic.gdx.graphics.g2d.SpriteBatch
 import com.badlogic.gdx.math.Intersector
 import com.badlogic.gdx.math.Rectangle
+import kotlinx.coroutines.runBlocking
+import java.io.IOException
+import java.lang.Process
 import java.util.*
 import kotlin.collections.toDoubleArray
 
@@ -53,7 +56,9 @@ class FlappyBird : ApplicationAdapter() {
     private val birdX: Float by lazy { gdxWidth / 4f - currentBird.width / 2f }
     private val currentBird by lazy { birds[flapState] }
 
-    val agent = DQNAgent(stateSize = 7, actionSize = 2)
+    private var pythonProcess: Process? = null
+
+    val agent = DQNAgent(actionSize = 2)
     var remainingEpisodes = 1000
     var reward = 0.1
 
@@ -118,6 +123,8 @@ class FlappyBird : ApplicationAdapter() {
         bottomTubeHeight = bottomTube.height
 
         startGame()
+
+        // startPythonProcess("/nn.py")
     }
 
     override fun render() {
@@ -139,7 +146,7 @@ class FlappyBird : ApplicationAdapter() {
             agent.replay()
 
             if (gameState == GameStates.GAME_OVER) {
-                println("Episode: $remainingEpisodes, ${agent.toString()}, Epsilon: ${agent.epsilon}")
+                // println("Episode: $remainingEpisodes, ${agent.toString()}, Epsilon: ${agent.epsilon}")
                 if (agent.epsilon > 0.01f) {
                     agent.epsilon -= 0.004f
                 }
@@ -188,7 +195,7 @@ class FlappyBird : ApplicationAdapter() {
         batch.draw(background, 0f, 0f, gdxWidth.toFloat(), gdxHeight.toFloat())
 
         assert(gameState == GameStates.PLAYING)
-        reward = 2.0
+        reward = 0.01
 
         updateScore()
         if (jumpRequested) {
@@ -210,7 +217,7 @@ class FlappyBird : ApplicationAdapter() {
     private fun updateScore() {
         if (tubeX[scoringTube] < birdX) {
             score++
-            reward = 10.0
+            reward = 0.526316
             if (scoringTube < numberOfTubes - 1) {
                 scoringTube++
             } else {
@@ -226,7 +233,7 @@ class FlappyBird : ApplicationAdapter() {
             velocity += GRAVITY
             birdY -= velocity
         } else {
-            reward = -100.0
+            reward = 0.0
             gameState = GameStates.GAME_OVER
         }
     }
@@ -297,6 +304,61 @@ class FlappyBird : ApplicationAdapter() {
             bottomTubeRectangles[i] = Rectangle()
         }
         gameState = GameStates.PLAYING
+    }
+
+    /**
+     * Starts a Python script as a background process.
+     * The Python script should implement a WebSocket server for communication.
+     */
+    private fun startPythonProcess(scriptPath: String) {
+        try {
+            val processBuilder = ProcessBuilder("${System.getProperty("user.home")}/miniconda3/bin/conda", "run", "--live-stream", "python3", FlappyBird::class.java.getResource(scriptPath)!!.path)
+            // Redirect error stream to standard output for easier debugging
+            processBuilder.redirectErrorStream(true)
+            pythonProcess = processBuilder.start()
+            println("Python process started successfully")
+
+            // Read the output of the Python process in a separate thread
+            // to prevent the buffer from filling up and blocking the process.
+            Thread {
+                pythonProcess?.inputStream?.bufferedReader()?.useLines { lines ->
+                    lines.forEach { line ->
+                        println("Python Output: $line")
+                    }
+                }
+            }.start()
+        } catch (e: Exception) {
+            System.err.println("Error starting Python process: ${e.message}")
+            pythonProcess = null
+        }
+    }
+
+    /**
+     * Stops the background Python process if it's running.
+     * This should typically be called when the game is shutting down (e.g., in the dispose() method).
+     */
+    private fun stopPythonProcess() {
+        pythonProcess?.let {
+            it.destroy() // Attempt to terminate gracefully
+            it.waitFor() // Wait for the process to exit
+            println("Python process stopped.")
+        }
+        pythonProcess = null
+    }
+
+    override fun dispose() {
+        batch.dispose()
+        background.dispose()
+        gameOver.dispose()
+        birds.forEach { it.dispose() }
+        topTube.dispose()
+        bottomTube.dispose()
+        font.dispose()
+
+        agent.dispose()
+        stopPythonProcess()
+
+        super.dispose()
     }
 
     companion object {
