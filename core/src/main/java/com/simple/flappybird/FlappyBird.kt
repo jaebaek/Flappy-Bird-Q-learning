@@ -93,7 +93,7 @@ class FlappyBird : ApplicationAdapter() {
     private fun getTopTubeY(i: Int) = gdxHeight / 2f + gap / 2 + tubeOpenSpaceY[i]
     private fun getBottomTubeY(i: Int) = gdxHeight / 2f - gap / 2 - bottomTubeHeight.toFloat() + tubeOpenSpaceY[i]
 
-    private val gap by lazy { currentBird.height * 3.0f }
+    private val gap by lazy { currentBird.height * 4.0f }
 
     private var distanceBetweenTubes: Float = 0.toFloat()
 
@@ -167,7 +167,7 @@ class FlappyBird : ApplicationAdapter() {
         }
     }
 
-    private fun getState(): DoubleArray {
+    private fun getState(): List<Double> {
         val relevantIndices = tubeX.indices
             .filter { tubeX[it] + topTubeWidth > birdX }
             .sortedBy { tubeX[it] }
@@ -186,8 +186,8 @@ class FlappyBird : ApplicationAdapter() {
         val normalizedBottomTubeY1 = bottomTubeY1 / gdxHeight.toFloat()
         val normalizedBottomTubeY2 = bottomTubeY2 / gdxHeight.toFloat()
         // val state = listOf(birdY / gdxHeight.toFloat(), tubeX[i1] / (2.0f * gdxWidth.toFloat()), topTubeY1, bottomTubeY1, tubeX[i2], topTubeY2, bottomTubeY2)
-        val state = listOf(normalizedBirdY, normalizedTubeX1, normalizedTopTubeY1, normalizedBottomTubeY1, normalizedTubeX2, normalizedTopTubeY2, normalizedBottomTubeY2)
-        return state.map { it.toDouble() }.toDoubleArray()
+        val state = listOf(normalizedBirdY, normalizedTubeX1, normalizedTopTubeY1)//, normalizedBottomTubeY1, normalizedTubeX2, normalizedTopTubeY2, normalizedBottomTubeY2)
+        return state.map { it.toDouble() }
     }
 
     private fun simulate(jumpRequested: Boolean) {
@@ -195,7 +195,7 @@ class FlappyBird : ApplicationAdapter() {
         batch.draw(background, 0f, 0f, gdxWidth.toFloat(), gdxHeight.toFloat())
 
         assert(gameState == GameStates.PLAYING)
-        reward = 0.01
+        reward = 0.3
 
         updateScore()
         if (jumpRequested) {
@@ -217,7 +217,7 @@ class FlappyBird : ApplicationAdapter() {
     private fun updateScore() {
         if (tubeX[scoringTube] < birdX) {
             score++
-            reward = 0.526316
+            reward = 10.0
             if (scoringTube < numberOfTubes - 1) {
                 scoringTube++
             } else {
@@ -233,7 +233,7 @@ class FlappyBird : ApplicationAdapter() {
             velocity += GRAVITY
             birdY -= velocity
         } else {
-            reward = 0.0
+            reward = -5.0
             gameState = GameStates.GAME_OVER
         }
     }
@@ -286,7 +286,7 @@ class FlappyBird : ApplicationAdapter() {
             if (Intersector.overlaps(birdBox, topTubeRectangles[i])
                 || Intersector.overlaps(birdBox, bottomTubeRectangles[i])
             ) {
-                reward = -100.0
+                reward = -2.0
                 gameState = GameStates.GAME_OVER
                 return
             }
@@ -355,7 +355,6 @@ class FlappyBird : ApplicationAdapter() {
         bottomTube.dispose()
         font.dispose()
 
-        agent.dispose()
         stopPythonProcess()
 
         super.dispose()
